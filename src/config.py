@@ -1,4 +1,4 @@
-# config.py
+# src/config.py
 
 import os
 
@@ -24,33 +24,30 @@ REPORTS_DIR         = os.path.join(OUTPUT_DIR, "reports")
 LATITUDE_BOUNDS  = (54.5, 58.0)
 LONGITUDE_BOUNDS = (8.0, 15.5)
 MAX_SOG          = 0.5  # Stationary vessel threshold (knots)
-MIN_CLUSTER_POINTS = 25  # absolute minimum to even write a chunk to disk
+MIN_CLUSTER_POINTS = 30  # absolute minimum to even write a chunk to disk
 
 # ----------------------------------------
 # 1C. DBSCAN parameter configurations (multi-scale)
 # ----------------------------------------
-
-# src/config.py
-
 DBSCAN_CONFIGS = {
     "major_ports": {
-        "eps_km":      1.0,
-        "min_samples": 150,
+        "eps_km":      1.3,
+        "min_samples": 200,
         "label":       "Major Commercial"
     },
     "regional_ports": {
-        "eps_km":      0.6,
-        "min_samples": 80,
+        "eps_km":      1,
+        "min_samples": 150,
         "label":       "Regional"
     },
     "local_ports": {
-        "eps_km":      0.3,
-        "min_samples": 30,
+        "eps_km":      0.5,
+        "min_samples": 60,
         "label":       "Local/Industrial"
     },
     "small_harbors": {
-        "eps_km":      0.1,
-        "min_samples": 20,
+        "eps_km":      0.2,
+        "min_samples": 30,
         "label":       "Small Harbor"
     },
 }
@@ -67,8 +64,10 @@ PORT_SIZE_CATEGORIES = {
     "Uncategorized":      {"min": 0.0,  "max": 0.0,  "color": "gray"},
 }
 
+MIN_PORT_AREA_KM2 = 0.005   # 5 000 m²
+MAX_PORT_AREA_KM2 = 20.0    # 20 km²
+
 # ----------------------------------------
 # 1E. Other thresholds
 # ----------------------------------------
-MIN_PORT_AREA_KM2 = 0.01   # 5 000 m²
-MAX_PORT_AREA_KM2 = 20.0    # 20 km²
+EARTH_RADIUS_KM = 6371.0

@@ -9,22 +9,155 @@ import logging
 from src import config
 from src.utils import ensure_directories_exist
 
+import seaborn as sns
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 class Visualiser:
     """
     Takes the final_ports list (from PortPostProcessor) and:
-      1) Creates six separate PNGs under config.PLOTS_DIR
-      2) Builds an interactive Folium map under config.MAPS_DIR
+      (a) Creates several informative PNGs under config.PLOTS_DIR
+      (b) Builds an interactive Folium map under config.MAPS_DIR
     """
 
     def __init__(self, final_ports):
         self.ports = final_ports
         ensure_directories_exist(config.PLOTS_DIR, config.MAPS_DIR)
 
+    def plot_density_heatmap(self):
+        """
+        2D KDE of vessel density across port centers (weighted by density).
+        """
+        lats = np.array([p['center_lat'] for p in self.ports])
+        lons = np.array([p['center_lon'] for p in self.ports])
+        densities = np.array([p['vessel_density'] for p in self.ports])
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.kdeplot(
+            x=lons, y=lats,
+            weights=densities,
+            cmap="Reds",
+            fill=True,
+            thresh=0.05,
+            levels=100,
+            bw_adjust=1.0,
+            ax=ax
+        )
+        ax.scatter(lons, lats, c='black', s=10, alpha=0.6)
+        ax.set_xlabel("Longitude")
+        ax.set_ylabel("Latitude")
+        ax.set_title("Vessel‐Density 2D KDE (weighted by density)")
+        out = os.path.join(config.PLOTS_DIR, "density_heatmap.png")
+        fig.savefig(out, dpi=150, bbox_inches='tight')
+        logger.info(f"Saved: {out}")
+        plt.close(fig)
+
+    def plot_area_violin(self):
+        """
+        Violin plot of port areas by category on a log scale.
+        """
+        data = [(p['category'], p['area_km2']) for p in self.ports]
+        if not data:
+            return
+        df = pd.DataFrame(data, columns=["Category", "Area_km2"])
+
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.violinplot(
+            x="Category",
+            y="Area_km2",
+            data=df,
+            scale="width",
+            inner="quartile",
+            palette=[config.PORT_SIZE_CATEGORIES[c]['color']
+                     for c in df['Category'].unique()],
+            ax=ax
+        )
+        ax.set_yscale("log")
+        ax.set_xlabel("Port Category")
+        ax.set_ylabel("Area (km², log scale)")
+        ax.set_title("Port Area Distribution by Category (Log Scale)")
+        ax.grid(True, which="both", alpha=0.3, linestyle='--')
+        plt.xticks(rotation=45)
+        out = os.path.join(config.PLOTS_DIR, "area_violin_log.png")
+        fig.savefig(out, dpi=150, bbox_inches='tight')
+        logger.info(f"Saved: {out}")
+        plt.close(fig)
+
+    def plot_correlation_matrix(self):
+        """
+        Correlation heatmap of area, vessel density, point count, and detected scale.
+        """
+        records = []
+        scale_mapping = {
+            "small_harbors": 0,
+            "local_ports":    1,
+            "regional_ports": 2,
+            "major_ports":    3
+        }
+        for p in self.ports:
+            records.append({
+                "area": p["area_km2"],
+                "density": p["vessel_density"],
+                "points": p["point_count"],
+                "scale": scale_mapping[p["detected_scale"]]
+            })
+        df = pd.DataFrame(records)
+        if df.empty:
+            return
+        corr = df.corr()
+
+        fig, ax = plt.subplots(figsize=(6, 5))
+        sns.heatmap(
+            corr,
+            annot=True,
+            cmap="coolwarm",
+            vmin=-1,
+            vmax=1,
+            linewidths=0.5,
+            ax=ax
+        )
+        ax.set_title("Correlation Matrix: Area, Density, Points, Scale")
+        out = os.path.join(config.PLOTS_DIR, "correlation_matrix.png")
+        fig.savefig(out, dpi=150, bbox_inches='tight')
+        logger.info(f"Saved: {out}")
+        plt.close(fig)
+
+    def plot_category_pie(self):
+        """
+        Pie (donut) chart showing proportion of ports in each size category.
+        """
+        counts = {
+            cat: sum(1 for p in self.ports if p['category'] == cat)
+            for cat in config.PORT_SIZE_CATEGORIES
+        }
+        if not counts:
+            return
+        labels = [cat.replace('_',' ').title() for cat in counts.keys()]
+        sizes = list(counts.values())
+        colors = [config.PORT_SIZE_CATEGORIES[c]['color'] for c in counts.keys()]
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        wedges, texts, autotexts = ax.pie(
+            sizes,
+            labels=labels,
+            colors=colors,
+            autopct='%1.1f%%',
+            startangle=140,
+            textprops=dict(size=10)
+        )
+        ax.set_title("Port‐Category Composition (by count)")
+        centre_circle = plt.Circle((0, 0), 0.70, fc='white')
+        fig.gca().add_artist(centre_circle)
+
+        out = os.path.join(config.PLOTS_DIR, "category_composition.png")
+        fig.savefig(out, dpi=150, bbox_inches='tight')
+        logger.info(f"Saved: {out}")
+        plt.close(fig)
+
     def plot_summary(self):
         """
-        Instead of one 2×3 figure, save each panel as its own PNG.
+        The original six‐panel summary plots.
         """
 
         # ────────────────────────────────────────────────────────────────
@@ -66,11 +199,12 @@ class Visualiser:
         # 2) Port size histogram by category
         # ────────────────────────────────────────────────────────────────
         fig2, ax2 = plt.subplots(figsize=(8, 6))
-        category_data = {}
-        for cat, specs in config.PORT_SIZE_CATEGORIES.items():
-            cat_areas = [p['area_km2'] for p in self.ports if p['category'] == cat]
-            if cat_areas:
-                category_data[cat] = cat_areas
+        category_data = {
+            cat: [p['area_km2'] for p in self.ports if p['category'] == cat]
+            for cat in config.PORT_SIZE_CATEGORIES
+        }
+        # Remove empty categories
+        category_data = {k: v for k, v in category_data.items() if v}
 
         if category_data:
             ax2.hist(
@@ -96,7 +230,7 @@ class Visualiser:
         fig3, ax3 = plt.subplots(figsize=(8, 6))
         scale_counts = {
             scale_key.replace('_',' ').title():
-            len([p for p in self.ports if p['detected_scale'] == scale_key])
+            sum(1 for p in self.ports if p['detected_scale'] == scale_key)
             for scale_key in scale_colors
         }
         if scale_counts:
@@ -176,7 +310,6 @@ class Visualiser:
         # 6) Top 10 ports by area (horizontal bar chart)
         # ────────────────────────────────────────────────────────────────
         fig6, ax6 = plt.subplots(figsize=(8, 6))
-        # Sort ports descending by area, take top 10
         top10 = sorted(self.ports, key=lambda p: p['area_km2'], reverse=True)[:10]
         if top10:
             labels = [f"Port {i+1}" for i in range(len(top10))]
@@ -233,6 +366,7 @@ class Visualiser:
             <i style="background:orange;opacity:0.7;">&nbsp;&nbsp;&nbsp;</i> Regional<br>
             <i style="background:blue;opacity:0.7;">&nbsp;&nbsp;&nbsp;</i> Local/Industrial<br>
             <i style="background:green;opacity:0.7;">&nbsp;&nbsp;&nbsp;</i> Small Harbor<br>
+            <i style="background:grey;opacity:0.5;">&nbsp;&nbsp;&nbsp;</i> Uncathegorised<br>
         </div>
         """
         m.get_root().html.add_child(folium.Element(legend_html))
@@ -240,3 +374,16 @@ class Visualiser:
         out_html = os.path.join(config.MAPS_DIR, "multiscale_dbscan_map.html")
         m.save(out_html)
         logger.info(f"Saved interactive map to: {out_html}")
+
+    def plot_all(self):
+        """
+        Call each plotting method in sequence.
+        """
+        # Original six summary plots
+        self.plot_summary()
+
+        # Advanced plots (excluding coastline)
+        self.plot_density_heatmap()
+        self.plot_area_violin()
+        self.plot_correlation_matrix()
+        self.plot_category_pie()

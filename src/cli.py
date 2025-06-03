@@ -64,7 +64,7 @@ def main():
 
     # 8) Visualization (plots + map)
     viz = Visualiser(final_ports)
-    viz.plot_summary()
+    viz.plot_all()
     viz.make_interactive_map()
 
     # 9) Generate text report
