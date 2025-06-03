@@ -59,7 +59,7 @@ If filename or location is different, either the CSV has to be renamed according
 2. From the project root, invoke the pipeline:
 
 ```bash
-python3 -m cli.py
+python3 -m cli.src
 ```
 
 This will print progress messages to stdout and populate the following on success:
